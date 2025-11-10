@@ -22,7 +22,7 @@ node-express-db/
 **シンプルな CRUD API**（Create / Read / Update / Delete）です。
 
 「ORM なしで、SQL を直接書いてデータを操作する」
-という基礎学習を目的にしています。
+という基本をアウトプットすることを目的にしています。
 
 ---
 
