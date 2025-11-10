@@ -53,5 +53,20 @@ router.put("/:id/", async (req, res) => {
 });
 
 //タスクの削除
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = await initDB();
+    const result = await db.run("DELETE FROM tasks WHERE id = ?", [id]);
+
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Task not found" });
+
+    res.json({ message: `Task${id} deleted successfully` });
+  } catch (err) {
+    console.error("Error deleting task:", err);
+    res.status(500).json({ error: "Failed to delete task" });
+  }
+});
 
 export default router;
