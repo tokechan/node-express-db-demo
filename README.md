@@ -125,9 +125,9 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
 
 ```mermaid
 flowchart TD
-  A[Client<br/>(curl / browser)] --> B[Express Router<br/>(routes/tasks.ts)]
-  B --> C[DB Layer<br/>(db.ts)]
-  C --> D[(SQLite<br/>tasks.db)]
+  A[Client (curl / browser)] --> B[Express Router (routes/tasks.ts)]
+  B --> C[DB Layer (db.ts)]
+  C --> D[(SQLite tasks.db)]
 
   subgraph Server [Express + TypeScript Server]
     B
@@ -141,6 +141,7 @@ flowchart TD
   class A client;
   class B,C server;
   class D db;
+
 
 ---
 
