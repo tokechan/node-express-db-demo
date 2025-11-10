@@ -121,6 +121,31 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
 
 ---
 
+## 🧱 アーキテクチャ図（Mermaid 版）
+
+```mermaid
+flowchart TD
+  A[Client<br/>(curl / browser)] --> B[Express Router<br/>(routes/tasks.ts)]
+  B --> C[DB Layer<br/>(db.ts)]
+  C --> D[(SQLite<br/>tasks.db)]
+
+  subgraph Server [Express + TypeScript Server]
+    B
+    C
+  end
+
+  classDef client fill:#34d399,stroke:#0f766e,stroke-width:2px,color:#fff;
+  classDef server fill:#60a5fa,stroke:#1d4ed8,stroke-width:2px,color:#fff;
+  classDef db fill:#facc15,stroke:#b45309,stroke-width:2px,color:#000;
+
+  class A client;
+  class B,C server;
+  class D db;
+
+---
+
+
+
 ## 学習ポイント
 
 - TypeScript × Express の基本構成を理解
@@ -153,16 +178,17 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
 
 This project is licensed under the MIT License.
 
-````
+```
 
 ---
 
 ## `.gitignore` も追加しとこう！
+
 ```bash
 node_modules
 tasks.db
 .env
 dist
-````
+```
 
 ---
