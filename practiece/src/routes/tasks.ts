@@ -5,9 +5,16 @@ const router = Router();
 
 //タスク一覧取得
 router.get("/", async (req, res) => {
-  const db = await initDB();
-  const tasks = await db.all("SELECT * FROM tasks");
-  res.json(tasks);
+  try {
+    const db = await initDB();
+    const tasks = await db.all("SELECT * FROM tasks");
+
+    //正常レスポンス
+    res.status(200).json(tasks);
+  } catch (err) {
+    console.error("Error fetching tasks: ", err); //ログに詳細を出す
+    res.status(500).json({ error: "Internal server error" }); //クライアントに安全なエラーメッセージを返す
+  }
 });
 
 //新規タスクを追加
