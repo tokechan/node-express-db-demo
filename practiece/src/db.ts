@@ -4,7 +4,8 @@ import { open } from "sqlite";
 //SQLite 接続用とテーブル初期化
 export async function initDB() {
   const db = await open({
-    filename: "./tasks.db",
+    // filename: "./tasks.db",
+    filename: "/invalid/path/database.db",
     driver: sqlite3.Database,
   });
 

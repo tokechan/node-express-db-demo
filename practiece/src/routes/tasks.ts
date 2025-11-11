@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { initDB } from "../db";
+import { errorHandler } from "../middleware/errorHandler";
 
 const router = Router();
 
@@ -19,24 +20,29 @@ router.get("/", async (req, res) => {
 
 //新規タスクを追加
 router.post("/", async (req, res) => {
-  const { title } = req.body;
+  try {
+    const { title } = req.body;
 
-  if (!title) {
-    return res.status(400).json({ error: "Title is required" });
+    if (!title) {
+      return res.status(400).json({ error: "Title is required" });
+    }
+
+    const db = await initDB();
+    const result = await db.run(
+      "INSERT INTO tasks (title, completed) VALUES (?, ?)",
+      title,
+      0
+    );
+
+    const newTask = await db.get(
+      "SELECT * FROM tasks WHERE id = ?",
+      result.lastID
+    );
+    res.json(newTask);
+  } catch (err) {
+    console.error("Error creating task: ", err);
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  const db = await initDB();
-  const result = await db.run(
-    "INSERT INTO tasks (title, completed) VALUES (?, ?)",
-    title,
-    0
-  );
-
-  const newTask = await db.get(
-    "SELECT * FROM tasks WHERE id = ?",
-    result.lastID
-  );
-  res.json(newTask);
 });
 
 //タスク完了状態の更新
