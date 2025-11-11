@@ -57,4 +57,33 @@ router.put("/:id", async (req, res) => {
   res.json(updated);
 });
 
+//部分更新
+router.patch("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { completed } = req.body;
+
+  //バリデーション
+  if (typeof completed !== "boolean") {
+    return res.status(400).json({ error: "Invaild request body" });
+  }
+
+  const db = await initDB();
+
+  //対象タスク存在確認
+  const existing = await db.get("SELECT * FROM tasks WHERE id = ?", id);
+  if (!existing) {
+    return res.status(404).json({ error: "Task not found" });
+  }
+  //更新
+  await db.run(
+    "UPDATE tasks SET completed = ? WHERE id = ?",
+    completed ? 1 : 0,
+    id
+  );
+
+  //更新後のタスクを取得
+  const updated = await db.get("SELECT *FROM tasks WHERE id = ?", id);
+  res.status(200).json(updated);
+});
+
 export default router;
