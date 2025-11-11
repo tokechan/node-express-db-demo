@@ -60,30 +60,52 @@ router.put("/:id", async (req, res) => {
 //部分更新
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
-  const { completed } = req.body;
-
-  //バリデーション
-  if (typeof completed !== "boolean") {
-    return res.status(400).json({ error: "Invaild request body" });
-  }
+  const { title, completed } = req.body;
 
   const db = await initDB();
+
+  //   //バリデーション
+  //   if (typeof completed !== "boolean") {
+  //     return res.status(400).json({ error: "Invaild request body" });
+  //   }
 
   //対象タスク存在確認
   const existing = await db.get("SELECT * FROM tasks WHERE id = ?", id);
   if (!existing) {
     return res.status(404).json({ error: "Task not found" });
   }
-  //更新
+  //更新対象を動的に決定
+  const newTitle = title ?? existing.title;
+  const newCompleted =
+    typeof completed === "boolean" ? (completed ? 1 : 0) : existing.completed;
+
   await db.run(
-    "UPDATE tasks SET completed = ? WHERE id = ?",
-    completed ? 1 : 0,
+    "UPDATE tasks SET title = ?, completed = ? WHERE id = ?",
+    newTitle,
+    newCompleted,
     id
   );
 
   //更新後のタスクを取得
   const updated = await db.get("SELECT *FROM tasks WHERE id = ?", id);
   res.status(200).json(updated);
+});
+
+//タスク削除
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = await initDB();
+    const result = await db.run("DELETE FROM tasks WHERE id = ?", [id]);
+
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Task not found" });
+
+    res.json({ message: `Task${id} deleted successfully` });
+  } catch (err) {
+    console.error("Error deleting task:", err);
+    res.status(500).json({ error: "Failed to delete task" });
+  }
 });
 
 export default router;
