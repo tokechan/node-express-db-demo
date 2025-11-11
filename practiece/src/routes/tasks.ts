@@ -1,0 +1,60 @@
+import { Router } from "express";
+import { initDB } from "../db";
+
+const router = Router();
+
+//タスク一覧取得
+router.get("/", async (req, res) => {
+  const db = await initDB();
+  const tasks = await db.all("SELECT * FROM tasks");
+  res.json(tasks);
+});
+
+//新規タスクを追加
+router.post("/", async (req, res) => {
+  const { title } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ error: "Title is required" });
+  }
+
+  const db = await initDB();
+  const result = await db.run(
+    "INSERT INTO tasks (title, completed) VALUES (?, ?)",
+    title,
+    0
+  );
+
+  const newTask = await db.get(
+    "SELECT * FROM tasks WHERE id = ?",
+    result.lastID
+  );
+  res.json(newTask);
+});
+
+//タスク完了状態の更新
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { completed } = req.body;
+
+  //バリデーション
+  if (typeof completed !== "boolean") {
+    return res.status(400).json({ error: "Invaild request body" });
+  }
+
+  const db = await initDB();
+  const result = await db.run(
+    "UPDATE tasks SET completed = ? WHERE id = ?",
+    completed ? 1 : 0,
+    id
+  );
+
+  if (result.changes === 0) {
+    return res.status(404).json({ error: "Task not found" });
+  }
+
+  const updated = await db.get("SELECT * FROM tasks WHERE id = ?", id);
+  res.json(updated);
+});
+
+export default router;
