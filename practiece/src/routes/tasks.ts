@@ -5,6 +5,7 @@ import {
   type NextFunction,
 } from "express";
 import { initDB } from "../db";
+import { success, fail } from "../utils/response";
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const db = await initDB();
     const tasks = await db.all("SELECT * FROM tasks");
     //正常レスポンス
-    res.status(200).json(tasks);
+    success(res, tasks, 200);
   } catch (err) {
     next(err); //共通エラーハンドラーに処理を委譲
   }
@@ -28,10 +29,10 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 
     const task = await db.get("SELECT * FROM tasks WHERE id = ?", id);
     if (!task) {
-      return res.status(404).json({ error: "Task not found" });
+      return fail(res, 404, "Task not found");
     }
 
-    res.status(200).json(task);
+    success(res, task, 200);
   } catch (err) {
     next(err);
   }
@@ -43,7 +44,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const { title } = req.body;
 
     if (!title) {
-      return res.status(400).json({ error: "Title is required" });
+      return fail(res, 400, "Title is required");
     }
 
     const db = await initDB();
@@ -57,7 +58,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       "SELECT * FROM tasks WHERE id = ?",
       result.lastID
     );
-    res.status(201).json(newTask);
+    success(res, newTask, 201);
   } catch (err) {
     next(err); //共通エラーハンドラーに処理を委譲
   }
@@ -71,7 +72,7 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
 
     //バリデーション
     if (typeof completed !== "boolean") {
-      return res.status(400).json({ error: "Invaild request body" });
+      return fail(res, 400, "Invaild request body");
     }
 
     const db = await initDB();
@@ -82,11 +83,11 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
     );
 
     if (result.changes === 0) {
-      return res.status(404).json({ error: "Task not found" });
+      return fail(res, 404, "Task not found");
     }
 
     const updated = await db.get("SELECT * FROM tasks WHERE id = ?", id);
-    res.json(updated);
+    success(res, updated, 200);
   } catch (err) {
     next(err); //共通エラーハンドラーに処理を委譲
   }
@@ -110,7 +111,7 @@ router.patch(
       //対象タスク存在確認
       const existing = await db.get("SELECT * FROM tasks WHERE id = ?", id);
       if (!existing) {
-        return res.status(404).json({ error: "Task not found" });
+        return fail(res, 404, "Task not found");
       }
       //更新対象を動的に決定
       const newTitle = title ?? existing.title;
@@ -130,7 +131,7 @@ router.patch(
 
       //更新後のタスクを取得
       const updated = await db.get("SELECT *FROM tasks WHERE id = ?", id);
-      res.status(200).json(updated);
+      success(res, updated, 200);
     } catch (err) {
       next(err); //共通エラーハンドラーに処理を委譲
     }
@@ -148,10 +149,10 @@ router.delete(
       const result = await db.run("DELETE FROM tasks WHERE id = ?", [id]);
 
       if (result.changes === 0) {
-        return res.status(404).json({ error: "Task not found" });
+        return fail(res, 404, "Task not found");
       }
 
-      res.json({ message: `Task${id} deleted successfully` });
+      success(res, null, 204);
     } catch (err) {
       next(err); //共通エラーハンドラーに処理を委譲
     }
