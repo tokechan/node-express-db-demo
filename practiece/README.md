@@ -6,9 +6,12 @@ practiece/
 │   ├── db.ts                    # SQLite接続＋テーブル初期化
 │   ├── index.ts                 # メインサーバー
 │   ├── middleware/
+│   │   ├── asyncHandler.ts      # 非同期関数のエラーハンドリング
 │   │   └── errorHandler.ts      # エラーハンドリングミドルウェア
-│   └── routes/
-│       └── tasks.ts             # CRUDルート
+│   ├── routes/
+│   │   └── tasks.ts             # CRUDルート
+│   └── utils/
+│       └── response.ts          # レスポンスユーティリティ
 ├── tasks.db                     # SQLite DBファイル（.gitignore推奨）
 ├── package.json
 ├── tsconfig.json
@@ -47,9 +50,12 @@ src/
 ├── db.ts                    # DB初期化・接続設定
 ├── index.ts                 # サーバー起動・ルート登録
 ├── middleware/
+│   ├── asyncHandler.ts      # 非同期関数のエラーハンドリング
 │   └── errorHandler.ts      # 共通エラーハンドリング
-└── routes/
-    └── tasks.ts             # タスクCRUDエンドポイント
+├── routes/
+│   └── tasks.ts             # タスクCRUDエンドポイント
+└── utils/
+    └── response.ts          # レスポンスユーティリティ
 ```
 ````
 
@@ -95,10 +101,40 @@ npm run dev
 curl http://localhost:3000/api/tasks | jq
 ```
 
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "title": "Buy milk",
+      "completed": 0,
+      "created_at": "2024-01-01 12:00:00"
+    }
+  ]
+}
+```
+
 ### GET: タスク詳細取得
 
 ```bash
 curl http://localhost:3000/api/tasks/1 | jq
+```
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "title": "Buy milk",
+    "completed": 0,
+    "created_at": "2024-01-01 12:00:00"
+  }
+}
 ```
 
 ### POST: タスク追加
@@ -109,12 +145,40 @@ curl -X POST http://localhost:3000/api/tasks \
   -d '{"title": "Buy milk"}' | jq
 ```
 
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "title": "Buy milk",
+    "completed": 0,
+    "created_at": "2024-01-01 12:00:00"
+  }
+}
+```
+
 ### PUT: 完了状態を更新
 
 ```bash
 curl -X PUT http://localhost:3000/api/tasks/1 \
   -H "Content-Type: application/json" \
   -d '{"completed": true}' | jq
+```
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "title": "Buy milk",
+    "completed": 1,
+    "created_at": "2024-01-01 12:00:00"
+  }
+}
 ```
 
 ### PATCH: タスクの部分更新
@@ -125,10 +189,45 @@ curl -X PATCH http://localhost:3000/api/tasks/1 \
   -d '{"title": "Updated title", "completed": true}' | jq
 ```
 
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "title": "Updated title",
+    "completed": 1,
+    "created_at": "2024-01-01 12:00:00"
+  }
+}
+```
+
 ### DELETE: タスク削除
 
 ```bash
 curl -X DELETE http://localhost:3000/api/tasks/1 | jq
+```
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": null
+}
+```
+
+### エラーレスポンス例
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": 404,
+    "message": "Task not found"
+  }
+}
 ```
 
 ---
@@ -140,6 +239,12 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
           │
           ▼
 [ Express Router (tasks.ts) ]
+          │
+          ▼
+[ Async Handler Middleware (asyncHandler.ts) ]
+          │
+          ▼
+[ Response Utils (response.ts) ]
           │
           ▼
 [ Error Handler Middleware (errorHandler.ts) ]
@@ -158,26 +263,43 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
 ```mermaid
 flowchart TD
     A[Client curl / browser] --> B[Express Router routes/tasks.ts]
-    B --> C[Error Handler Middleware errorHandler.ts]
-    C --> D[DB Layer db.ts]
-    D --> E[(SQLite tasks.db)]
+    B --> C[Async Handler Middleware asyncHandler.ts]
+    C --> D[Route Handler with Response Utils]
+    D --> E[DB Layer db.ts]
+    E --> F[(SQLite tasks.db)]
+    C -->|Error| G[Error Handler Middleware errorHandler.ts]
+    G --> H[Error Response]
 
     subgraph Server["Express + TypeScript Server"]
         B
         C
         D
+        E
+        G
     end
+
+    subgraph Utils["Utils"]
+        I[Response Utils response.ts]
+    end
+
+    D -.->|uses| I
 
     classDef client fill:#34d399,stroke:#0f766e,stroke-width:2px,color:#fff
     classDef server fill:#60a5fa,stroke:#1d4ed8,stroke-width:2px,color:#fff
     classDef middleware fill:#a78bfa,stroke:#5b21b6,stroke-width:2px,color:#fff
+    classDef utils fill:#fb7185,stroke:#9f1239,stroke-width:2px,color:#fff
     classDef db fill:#facc15,stroke:#b45309,stroke-width:2px,color:#000
+    classDef error fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#fff
 
     class A client
     class B server
     class C middleware
     class D server
-    class E db
+    class E server
+    class F db
+    class G middleware
+    class H error
+    class I utils
 ```
 
 ---
@@ -187,13 +309,42 @@ flowchart TD
 - TypeScript × Express の基本構成を理解
 - SQL を直接書くことで DB 操作の流れを把握
 - ORM なしでも CRUD が書ける実践力を習得
+- 非同期処理のエラーハンドリング（asyncHandler の実装）
 - エラーハンドリングミドルウェアの実装
+- 統一されたレスポンス形式の実装
 - RESTful API の設計（GET, POST, PUT, PATCH, DELETE）
 - CLI (`curl`, `jq`) を使った API デバッグ
 
 ---
 
 ## 主な機能
+
+### 非同期処理のエラーハンドリング（asyncHandler）
+
+非同期関数のエラーハンドリングを簡素化するためのミドルウェアを実装しています。
+`asyncHandler` を使用することで、各ルートハンドラーで try-catch を書く必要がなくなります。
+
+```typescript
+// middleware/asyncHandler.ts
+export const asyncHandler =
+  (fn: Function) => (req: Request, res: Response, next: NextFunction) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
+```
+
+### 統一されたレスポンス形式
+
+成功時と失敗時のレスポンス形式を統一するユーティリティ関数を実装しています。
+
+```typescript
+// utils/response.ts
+export const success = (res: Response, data: any, status = 200) => {
+  res.status(status).json({ success: true, data });
+};
+
+export const fail = (res: Response, status: number, message: string) => {
+  res.status(status).json({ success: false, error: { code: status, message } });
+};
+```
 
 ### エラーハンドリング
 
@@ -216,6 +367,20 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
 `PATCH /api/tasks/:id` エンドポイントでは、
 リクエストボディで指定されたフィールドのみを更新します。
 未指定のフィールドは既存の値が保持されます。
+
+### ルートハンドラーの実装例
+
+```typescript
+// routes/tasks.ts
+router.get(
+  "/",
+  asyncHandler(async (req: Request, res: Response) => {
+    const db = await initDB();
+    const tasks = await db.all("SELECT * FROM tasks");
+    success(res, tasks, 200);
+  })
+);
+```
 
 ---
 
