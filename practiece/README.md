@@ -422,3 +422,10 @@ dist
 ````
 
 ---
+
+## RESTful ガイドラインへの対応
+
+- すべてのレスポンスで統一フォーマット（`success` / `error`）を返し、`POST` では `Location` ヘッダーを付与して新規リソースの URI を伝えるようにしました。
+- `GET` 応答には `Cache-Control` を設定し、キャッシュ可能性を明示。`POST/PUT/PATCH/DELETE` はミドルウェアで `no-store` を宣言してクライアント側とのステートレスなやり取りを担保しています。
+- URI に含まれる `:id` は数値チェックを行い、`PUT` は完全更新（タイトル＋ completed）を要求、`PATCH` は部分更新という形で HTTP メソッドの意味と冪等性を守っています。
+- バリデーションとエラーハンドラで HTTP ステータスコードとメッセージを一元管理し、REST Constraints（Uniform Interface / Stateless / Cacheable）を学習しやすい構成にまとめています。

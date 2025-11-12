@@ -1,16 +1,18 @@
 import sqlite3 from "sqlite3";
-import { open } from "sqlite";
+import { open, type Database } from "sqlite";
 
-//SQLite 接続用とテーブル初期化
-export async function initDB() {
+type SqliteInstance = Database<sqlite3.Database, sqlite3.Statement>;
+
+let dbPromise: Promise<SqliteInstance> | null = null;
+
+async function createDatabaseConnection(): Promise<SqliteInstance> {
   const db = await open({
     filename: "./tasks.db",
-    // filename: "/invalid/path/database.db",
     driver: sqlite3.Database,
   });
 
-  //テーブルがなければ作成
   await db.exec(`
+        PRAGMA foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -22,3 +24,13 @@ export async function initDB() {
   console.log("Database connected & tasks table ready!");
   return db;
 }
+
+export async function getDB(): Promise<SqliteInstance> {
+  if (!dbPromise) {
+    dbPromise = createDatabaseConnection();
+  }
+  return dbPromise;
+}
+
+// Backward compatibility with previous name
+export const initDB = getDB;

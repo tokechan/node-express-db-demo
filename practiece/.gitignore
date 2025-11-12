@@ -1,0 +1,9 @@
+node_modules
+tasks.db
+not_exists.db
+dist
+.env
+.DS_Store
+*.log
+coverage
+tmp
