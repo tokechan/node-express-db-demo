@@ -7,11 +7,15 @@ practiece/
 │   ├── index.ts                 # メインサーバー
 │   ├── middleware/
 │   │   ├── asyncHandler.ts      # 非同期関数のエラーハンドリング
+│   │   ├── cacheControl.ts      # キャッシュ制御ミドルウェア
 │   │   └── errorHandler.ts      # エラーハンドリングミドルウェア
 │   ├── routes/
 │   │   └── tasks.ts             # CRUDルート
 │   └── utils/
-│       └── response.ts          # レスポンスユーティリティ
+│       ├── httpError.ts         # HTTPエラークラス
+│       ├── response.ts          # レスポンスユーティリティ
+│       ├── task.ts              # タスクリソース変換
+│       └── validators.ts        # バリデーション関数
 ├── tasks.db                     # SQLite DBファイル（.gitignore推奨）
 ├── package.json
 ├── tsconfig.json
@@ -51,11 +55,15 @@ src/
 ├── index.ts                 # サーバー起動・ルート登録
 ├── middleware/
 │   ├── asyncHandler.ts      # 非同期関数のエラーハンドリング
+│   ├── cacheControl.ts      # キャッシュ制御ミドルウェア
 │   └── errorHandler.ts      # 共通エラーハンドリング
 ├── routes/
 │   └── tasks.ts             # タスクCRUDエンドポイント
 └── utils/
-    └── response.ts          # レスポンスユーティリティ
+    ├── httpError.ts         # HTTPエラークラス
+    ├── response.ts          # レスポンスユーティリティ
+    ├── task.ts              # タスクリソース変換（HAL風リンク）
+    └── validators.ts        # バリデーション関数
 ```
 ````
 
@@ -82,14 +90,14 @@ npm run dev
 
 ## API エンドポイント
 
-| メソッド | パス             | 説明                   |
-| -------- | ---------------- | ---------------------- |
-| `GET`    | `/api/tasks`     | タスク一覧取得         |
-| `GET`    | `/api/tasks/:id` | タスク詳細取得         |
-| `POST`   | `/api/tasks`     | タスク追加             |
-| `PUT`    | `/api/tasks/:id` | タスクの完了状態を更新 |
-| `PATCH`  | `/api/tasks/:id` | タスクの部分更新       |
-| `DELETE` | `/api/tasks/:id` | タスク削除             |
+| メソッド | パス             | 説明             |
+| -------- | ---------------- | ---------------- |
+| `GET`    | `/api/tasks`     | タスク一覧取得   |
+| `GET`    | `/api/tasks/:id` | タスク詳細取得   |
+| `POST`   | `/api/tasks`     | タスク追加       |
+| `PUT`    | `/api/tasks/:id` | タスクの完全更新 |
+| `PATCH`  | `/api/tasks/:id` | タスクの部分更新 |
+| `DELETE` | `/api/tasks/:id` | タスク削除       |
 
 ---
 
@@ -110,8 +118,11 @@ curl http://localhost:3000/api/tasks | jq
     {
       "id": 1,
       "title": "Buy milk",
-      "completed": 0,
-      "created_at": "2024-01-01 12:00:00"
+      "completed": false,
+      "createdAt": "2024-01-01 12:00:00",
+      "links": {
+        "self": "/api/tasks/1"
+      }
     }
   ]
 }
@@ -131,8 +142,11 @@ curl http://localhost:3000/api/tasks/1 | jq
   "data": {
     "id": 1,
     "title": "Buy milk",
-    "completed": 0,
-    "created_at": "2024-01-01 12:00:00"
+    "completed": false,
+    "createdAt": "2024-01-01 12:00:00",
+    "links": {
+      "self": "/api/tasks/1"
+    }
   }
 }
 ```
@@ -147,47 +161,33 @@ curl -X POST http://localhost:3000/api/tasks \
 
 **レスポンス例:**
 
+- ステータスコード: `201 Created`
+- ヘッダー: `Location: /api/tasks/1`
+
 ```json
 {
   "success": true,
   "data": {
     "id": 1,
     "title": "Buy milk",
-    "completed": 0,
-    "created_at": "2024-01-01 12:00:00"
+    "completed": false,
+    "createdAt": "2024-01-01 12:00:00",
+    "links": {
+      "self": "/api/tasks/1"
+    }
   }
 }
 ```
 
-### PUT: 完了状態を更新
+### PUT: タスクの完全更新
 
 ```bash
 curl -X PUT http://localhost:3000/api/tasks/1 \
   -H "Content-Type: application/json" \
-  -d '{"completed": true}' | jq
-```
-
-**レスポンス例:**
-
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "title": "Buy milk",
-    "completed": 1,
-    "created_at": "2024-01-01 12:00:00"
-  }
-}
-```
-
-### PATCH: タスクの部分更新
-
-```bash
-curl -X PATCH http://localhost:3000/api/tasks/1 \
-  -H "Content-Type: application/json" \
   -d '{"title": "Updated title", "completed": true}' | jq
 ```
+
+**注意:** `PUT`は完全更新のため、`title`と`completed`の両方が必須です。
 
 **レスポンス例:**
 
@@ -197,8 +197,38 @@ curl -X PATCH http://localhost:3000/api/tasks/1 \
   "data": {
     "id": 1,
     "title": "Updated title",
-    "completed": 1,
-    "created_at": "2024-01-01 12:00:00"
+    "completed": true,
+    "createdAt": "2024-01-01 12:00:00",
+    "links": {
+      "self": "/api/tasks/1"
+    }
+  }
+}
+```
+
+### PATCH: タスクの部分更新
+
+```bash
+curl -X PATCH http://localhost:3000/api/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated title"}' | jq
+```
+
+**注意:** `PATCH`は部分更新のため、`title`と`completed`のいずれか（または両方）を指定できます。
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "title": "Updated title",
+    "completed": false,
+    "createdAt": "2024-01-01 12:00:00",
+    "links": {
+      "self": "/api/tasks/1"
+    }
   }
 }
 ```
@@ -206,17 +236,13 @@ curl -X PATCH http://localhost:3000/api/tasks/1 \
 ### DELETE: タスク削除
 
 ```bash
-curl -X DELETE http://localhost:3000/api/tasks/1 | jq
+curl -X DELETE http://localhost:3000/api/tasks/1
 ```
 
 **レスポンス例:**
 
-```json
-{
-  "success": true,
-  "data": null
-}
-```
+- ステータスコード: `204 No Content`
+- ボディ: なし
 
 ### エラーレスポンス例
 
@@ -225,10 +251,17 @@ curl -X DELETE http://localhost:3000/api/tasks/1 | jq
   "success": false,
   "error": {
     "code": 404,
-    "message": "Task not found"
+    "message": "Task not found",
+    "details": null
   }
 }
 ```
+
+**よくあるエラー:**
+
+- `400 Bad Request`: バリデーションエラー（例: `title`が必須、`id`が正の整数でない）
+- `404 Not Found`: タスクが見つからない
+- `500 Internal Server Error`: サーバー内部エラー
 
 ---
 
@@ -313,6 +346,9 @@ flowchart TD
 - エラーハンドリングミドルウェアの実装
 - 統一されたレスポンス形式の実装
 - RESTful API の設計（GET, POST, PUT, PATCH, DELETE）
+- HTTP ヘッダーの適切な使用（Location, Cache-Control）
+- バリデーションとエラーハンドリングの一元管理
+- HAL 風のリンクを含むリソース表現
 - CLI (`curl`, `jq`) を使った API デバッグ
 
 ---
@@ -337,13 +373,78 @@ export const asyncHandler =
 
 ```typescript
 // utils/response.ts
-export const success = (res: Response, data: any, status = 200) => {
-  res.status(status).json({ success: true, data });
+export const sendSuccess = <T>(
+  res: Response,
+  data: T,
+  status = 200,
+  meta?: Meta
+) => {
+  res.status(status).json({ success: true, data, meta });
 };
 
-export const fail = (res: Response, status: number, message: string) => {
-  res.status(status).json({ success: false, error: { code: status, message } });
+export const sendError = (
+  res: Response,
+  status: number,
+  message: string,
+  details?: Meta
+) => {
+  res.status(status).json({
+    success: false,
+    error: { code: status, message, details },
+  });
 };
+```
+
+### HTTP エラークラス
+
+HTTP ステータスコードとメッセージを一元管理するための`HttpError`クラスを実装しています。
+
+```typescript
+// utils/httpError.ts
+export class HttpError extends Error {
+  public readonly statusCode: number;
+  public readonly details: Record<string, unknown> | undefined;
+
+  constructor(
+    statusCode: number,
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.statusCode = statusCode;
+    this.details = details;
+    this.name = "HttpError";
+  }
+}
+```
+
+### バリデーション
+
+リクエストパラメータとボディのバリデーションを行う関数を実装しています。
+
+```typescript
+// utils/validators.ts
+export function parseTaskId(idParam: string | undefined): number {
+  const id = Number(idParam);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new HttpError(400, "Task id must be a positive integer");
+  }
+  return id;
+}
+
+export function requireTitle(raw: unknown): string {
+  if (typeof raw !== "string") {
+    throw new HttpError(400, "title must be a string");
+  }
+  const title = raw.trim();
+  if (!title) {
+    throw new HttpError(400, "title is required");
+  }
+  if (title.length > TITLE_MAX_LENGTH) {
+    throw new HttpError(400, `title must be <= ${TITLE_MAX_LENGTH} characters`);
+  }
+  return title;
+}
 ```
 
 ### エラーハンドリング
@@ -362,22 +463,71 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
 };
 ```
 
-### 部分更新（PATCH）
+### キャッシュ制御
 
-`PATCH /api/tasks/:id` エンドポイントでは、
-リクエストボディで指定されたフィールドのみを更新します。
-未指定のフィールドは既存の値が保持されます。
+`GET`リクエストには`Cache-Control: private, max-age=30`を設定し、
+`POST/PUT/PATCH/DELETE`リクエストには`Cache-Control: no-store`を設定しています。
+
+```typescript
+// middleware/cacheControl.ts
+export const declareNoCache: RequestHandler = (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+};
+```
+
+### リソース表現（HAL 風リンク）
+
+タスクリソースに`links.self`を含む HAL 風のリンクを実装しています。
+
+```typescript
+// utils/task.ts
+export function toTaskResource(row: TaskRow): TaskResource {
+  return {
+    id: row.id,
+    title: row.title,
+    completed: Boolean(row.completed),
+    createdAt: row.created_at,
+    links: {
+      self: `/api/tasks/${row.id}`,
+    },
+  };
+}
+```
+
+### 完全更新（PUT）と部分更新（PATCH）
+
+- **PUT**: `title`と`completed`の両方が必須で、完全更新を行います
+- **PATCH**: `title`と`completed`のいずれか（または両方）を指定でき、部分更新を行います
 
 ### ルートハンドラーの実装例
 
 ```typescript
 // routes/tasks.ts
-router.get(
+router.post(
   "/",
-  asyncHandler(async (req: Request, res: Response) => {
-    const db = await initDB();
-    const tasks = await db.all("SELECT * FROM tasks");
-    success(res, tasks, 200);
+  asyncHandler(async (req, res) => {
+    const title = requireTitle(req.body.title);
+    const completed = parseCompleted(req.body.completed) ?? false;
+
+    const db = await getDB();
+    const result = await db.run(
+      "INSERT INTO tasks (title, completed) VALUES (?, ?)",
+      title,
+      booleanToSQLite(completed)
+    );
+    const newTask = await db.get(
+      "SELECT * FROM tasks WHERE id = ?",
+      result.lastID
+    );
+    if (!newTask) {
+      throw new HttpError(500, "Failed to load created task");
+    }
+    const resource = toTaskResource(newTask);
+    res.setHeader("Location", resource.links.self);
+    sendSuccess(res, resource, 201);
   })
 );
 ```
@@ -425,7 +575,46 @@ dist
 
 ## RESTful ガイドラインへの対応
 
-- すべてのレスポンスで統一フォーマット（`success` / `error`）を返し、`POST` では `Location` ヘッダーを付与して新規リソースの URI を伝えるようにしました。
-- `GET` 応答には `Cache-Control` を設定し、キャッシュ可能性を明示。`POST/PUT/PATCH/DELETE` はミドルウェアで `no-store` を宣言してクライアント側とのステートレスなやり取りを担保しています。
-- URI に含まれる `:id` は数値チェックを行い、`PUT` は完全更新（タイトル＋ completed）を要求、`PATCH` は部分更新という形で HTTP メソッドの意味と冪等性を守っています。
-- バリデーションとエラーハンドラで HTTP ステータスコードとメッセージを一元管理し、REST Constraints（Uniform Interface / Stateless / Cacheable）を学習しやすい構成にまとめています。
+このプロジェクトは、RESTful API のベストプラクティスに従って実装されています。
+
+### 統一されたインターフェース（Uniform Interface）
+
+- **統一フォーマット**: すべてのレスポンスで `{ success: true/false, data: ..., error: ... }` という統一フォーマットを使用
+- **Location ヘッダー**: `POST` リクエストで新規リソースを作成する際、`Location` ヘッダーに新規リソースの URI を設定（ステータスコード `201 Created`）
+- **HAL 風リンク**: リソースに `links.self` を含む HAL 風のリンクを実装し、リソース間の関係を明確化
+
+### ステートレス（Stateless）
+
+- 各リクエストは独立しており、サーバー側でセッション状態を保持しない
+- クライアントは必要な情報をすべてリクエストに含める
+
+### キャッシュ可能（Cacheable）
+
+- **GET リクエスト**: `Cache-Control: private, max-age=30` を設定し、30 秒間キャッシュ可能
+- **POST/PUT/PATCH/DELETE リクエスト**: `Cache-Control: no-store, max-age=0` を設定し、キャッシュを無効化
+
+### HTTP メソッドの適切な使用
+
+- **GET**: リソースの取得（冪等）
+- **POST**: 新規リソースの作成（非冪等）
+- **PUT**: 完全更新（`title` と `completed` の両方が必須、冪等）
+- **PATCH**: 部分更新（`title` と `completed` のいずれかまたは両方を指定、冪等）
+- **DELETE**: リソースの削除（ステータスコード `204 No Content`、冪等）
+
+### バリデーションとエラーハンドリング
+
+- **ID バリデーション**: URI パラメータ `:id` は正の整数のみを受け付け（`parseTaskId`）
+- **リクエストボディバリデーション**: `title` は文字列で必須、最大長 255 文字（`requireTitle`, `optionalTitle`）
+- **型安全性**: `completed` は boolean 値のみを受け付け（`parseCompleted`）
+- **エラーハンドリング**: `HttpError` クラスで HTTP ステータスコードとメッセージを一元管理
+
+### REST Constraints の実装
+
+- **Uniform Interface**: 統一されたレスポンス形式とリソース表現
+- **Stateless**: サーバー側でセッション状態を保持しない
+- **Cacheable**: 適切なキャッシュヘッダーの設定
+- **Client-Server**: クライアントとサーバーの分離
+- **Layered System**: ミドルウェアによる階層的な処理
+- **Code on Demand**: 実装していない（オプショナル）
+
+これらの実装により、RESTful API の原則を学習しやすい構成になっています。
