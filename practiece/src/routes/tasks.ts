@@ -57,7 +57,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       "SELECT * FROM tasks WHERE id = ?",
       result.lastID
     );
-    res.json(newTask);
+    res.status(201).json(newTask);
   } catch (err) {
     next(err); //共通エラーハンドラーに処理を委譲
   }
