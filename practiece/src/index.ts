@@ -1,11 +1,14 @@
 import express from "express";
 import tasksRouter from "./routes/tasks";
 import { errorHandler } from "./middleware/errorHandler";
+import { declareNoCache } from "./middleware/cacheControl";
 
 const app = express();
 const PORT = 3000;
 //JSONボディを解析するミドルウェアを登録
 app.use(express.json());
+//キャッシュ方針を明示
+app.use(declareNoCache);
 //ルーティング設定
 app.use("/api/tasks", tasksRouter);
 //動作確認用ルート

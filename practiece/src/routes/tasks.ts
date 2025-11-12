@@ -1,119 +1,131 @@
-import {
-  Router,
-  type Request,
-  type Response,
-  type NextFunction,
-} from "express";
-import { initDB } from "../db";
-import { success, fail } from "../utils/response";
+import { Router } from "express";
+import { getDB } from "../db";
+import { sendSuccess } from "../utils/response";
 import { asyncHandler } from "../middleware/asyncHandler";
+import { HttpError } from "../utils/httpError";
+import {
+  optionalTitle,
+  parseCompleted,
+  parseTaskId,
+  requireTitle,
+} from "../utils/validators";
+import { toTaskCollection, toTaskResource } from "../utils/task";
 
 const router = Router();
 
-//タスク一覧取得
+const booleanToSQLite = (value: boolean) => (value ? 1 : 0);
+
 router.get(
   "/",
-  asyncHandler(async (req: Request, res: Response) => {
-    const db = await initDB();
-    const tasks = await db.all("SELECT * FROM tasks");
-    //正常レスポンス
-    success(res, tasks, 200);
+  asyncHandler(async (_req, res) => {
+    const db = await getDB();
+    const tasks = await db.all("SELECT * FROM tasks ORDER BY created_at DESC");
+    res.setHeader("Cache-Control", "private, max-age=30");
+    sendSuccess(res, toTaskCollection(tasks));
   })
 );
 
-//タスク詳細取得
 router.get(
   "/:id",
-  asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const db = await initDB();
+  asyncHandler(async (req, res) => {
+    const id = parseTaskId(req.params.id);
+    const db = await getDB();
     const task = await db.get("SELECT * FROM tasks WHERE id = ?", id);
-    if (!task) return fail(res, 404, "Task not found");
-    success(res, task, 200);
+    if (!task) throw new HttpError(404, "Task not found");
+    res.setHeader("Cache-Control", "private, max-age=30");
+    sendSuccess(res, toTaskResource(task));
   })
 );
 
-//新規タスクを追加
 router.post(
   "/",
-  asyncHandler(async (req: Request, res: Response) => {
-    const { title } = req.body;
-    if (!title) return fail(res, 400, "Title is required");
-    const db = await initDB();
+  asyncHandler(async (req, res) => {
+    const title = requireTitle(req.body.title);
+    const completed = parseCompleted(req.body.completed) ?? false;
+
+    const db = await getDB();
     const result = await db.run(
       "INSERT INTO tasks (title, completed) VALUES (?, ?)",
       title,
-      0
+      booleanToSQLite(completed)
     );
-    const newTask = await db.get(
-      "SELECT * FROM tasks WHERE id = ?",
-      result.lastID
-    );
-    success(res, newTask, 201);
+    const newTask = await db.get("SELECT * FROM tasks WHERE id = ?", result.lastID);
+    if (!newTask) {
+      throw new HttpError(500, "Failed to load created task");
+    }
+    const resource = toTaskResource(newTask);
+    res.setHeader("Location", resource.links.self);
+    sendSuccess(res, resource, 201);
   })
 );
 
-//タスク完了状態の更新
 router.put(
   "/:id",
-  asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { completed } = req.body;
-    //バリデーション
-    if (completed === undefined)
-      return fail(res, 400, "completed status is required");
-    //DB更新
-    const db = await initDB();
-    await db.run(
-      "UPDATE tasks SET completed = ? WHERE id = ?",
-      completed ? 1 : 0,
+  asyncHandler(async (req, res) => {
+    const id = parseTaskId(req.params.id);
+    const title = requireTitle(req.body.title);
+    const completed = parseCompleted(req.body.completed, { required: true })!;
+
+    const db = await getDB();
+    const result = await db.run(
+      "UPDATE tasks SET title = ?, completed = ? WHERE id = ?",
+      title,
+      booleanToSQLite(completed),
       id
     );
-    //更新後のタスクを取得
+
+    if (result.changes === 0) {
+      throw new HttpError(404, "Task not found");
+    }
+
     const updated = await db.get("SELECT * FROM tasks WHERE id = ?", id);
-    success(res, updated, 200);
+    if (!updated) {
+      throw new HttpError(500, "Failed to load updated task");
+    }
+    sendSuccess(res, toTaskResource(updated));
   })
 );
 
-//部分更新
 router.patch(
   "/:id",
-  asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { title, completed } = req.body;
+  asyncHandler(async (req, res) => {
+    const id = parseTaskId(req.params.id);
+    const title = optionalTitle(req.body.title);
+    const completed = parseCompleted(req.body.completed);
 
-    const db = await initDB();
+    if (title === undefined && completed === undefined) {
+      throw new HttpError(400, "Provide at least one field to update");
+    }
 
-    //対象タスク存在確認
+    const db = await getDB();
     const existing = await db.get("SELECT * FROM tasks WHERE id = ?", id);
-    if (!existing) return fail(res, 404, "Task not found");
-    //更新対象を動的に決定
-    const newTitle = title ?? existing.title;
-    const newCompleted =
-      typeof completed === "boolean" ? (completed ? 1 : 0) : existing.completed;
+    if (!existing) throw new HttpError(404, "Task not found");
 
     await db.run(
       "UPDATE tasks SET title = ?, completed = ? WHERE id = ?",
-      newTitle,
-      newCompleted,
+      title ?? existing.title,
+      completed === undefined
+        ? existing.completed
+        : booleanToSQLite(completed),
       id
     );
 
-    //更新後のタスクを取得
-    const updated = await db.get("SELECT *FROM tasks WHERE id = ?", id);
-    success(res, updated, 200);
+    const updated = await db.get("SELECT * FROM tasks WHERE id = ?", id);
+    if (!updated) {
+      throw new HttpError(500, "Failed to load updated task");
+    }
+    sendSuccess(res, toTaskResource(updated));
   })
 );
 
-//タスク削除
 router.delete(
   "/:id",
-  asyncHandler(async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const db = await initDB();
+  asyncHandler(async (req, res) => {
+    const id = parseTaskId(req.params.id);
+    const db = await getDB();
     const result = await db.run("DELETE FROM tasks WHERE id = ?", id);
-    if (result.changes === 0) return fail(res, 404, "Task not found");
-    success(res, null, 204);
+    if (result.changes === 0) throw new HttpError(404, "Task not found");
+    res.status(204).end();
   })
 );
 
